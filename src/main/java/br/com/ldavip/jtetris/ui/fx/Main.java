@@ -1,4 +1,4 @@
-package br.com.ldavip.jtetris;
+package br.com.ldavip.jtetris.ui.fx;
 
 import javafx.application.Application;
 import javafx.event.ActionEvent;

@@ -36,6 +36,14 @@ public class Tetromino {
         this.position = position;
     }
 
+    public int getHeight() {
+        return getShape().length;
+    }
+
+    public int getWidth() {
+        return getShape().length > 0 ? getShape()[0].length : 0;
+    }
+
     public Position getPosition() {
         return position;
     }

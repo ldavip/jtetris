@@ -5,18 +5,21 @@ import br.com.ldavip.jtetris.pieces.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class JTetris extends TimerTask {
+public class JTetris {
     private static long seed = 0;
-    private static long tick = 500;
+    private static long LEVEL_UP = 1000;
+    private static long STARTING_TICK = 500;
+    private static long[] LINE_CLEAR_SCORE = {0, 40, 100, 300, 1200};
 
-    private static final Position INITIAL_POSITION = new Position(0, 5);
-    private static final int HEIGHT = 22;
-    private static final int WIDTH = 12;
+    public static final Position INITIAL_POSITION = new Position(0, 5);
+    public static final int HEIGHT = 22;
+    public static final int WIDTH = 12;
 
     private Random rand = seed > 0 ? new Random(seed) : new Random();
 
@@ -39,10 +42,13 @@ public class JTetris extends TimerTask {
     private AtomicReference<Tetromino> next = new AtomicReference<>();
     private AtomicReference<Tetromino> current = new AtomicReference<>();
     private AtomicBoolean paused = new AtomicBoolean(false);
+    private long score = 0L;
+    private long currentLevel = 0;
+    private long tick;
 
     public JTetris() {
         initBoard();
-        startTicking();
+        startTicking(STARTING_TICK);
     }
 
     private void setTicking(boolean ticking) {
@@ -71,8 +77,20 @@ public class JTetris extends TimerTask {
         return blocks;
     }
 
+    public long getTick() {
+        return tick;
+    }
+
+    public long getCurrentLevel() {
+        return currentLevel + 1;
+    }
+
     public Tetromino getNext() {
         return next.get();
+    }
+
+    public long getScore() {
+        return score;
     }
 
     public void setListener(TickListener listener) {
@@ -100,41 +118,34 @@ public class JTetris extends TimerTask {
         sortNextPiece();
     }
 
-    private void startTicking() {
+    private void startTicking(long tick) {
+        this.tick = tick;
         ticking.set(true);
+        if (timer != null) {
+            timer.cancel();
+        }
         timer = new Timer();
-        timer.schedule(this, tick, tick);
+
+        TimerTask task = new TimerTask() {
+            @Override
+            public void run() {
+                update();
+            }
+        };
+        timer.schedule(task, 0, tick);
     }
 
-    @Override
-    public void run() {
+    private void updateTickFrequency(long tick) {
+        this.tick = tick;
+        startTicking(tick);
+    }
+
+    public void update() {
         if (!paused.get()) {
             if (current.get() == null) {
-                List<Integer> completeLines = searchCompleteLines();
-                if (!completeLines.isEmpty()) {
-                    tetrominoes.parallelStream().forEach(p -> p.cut(completeLines));
-                    completeLines.sort(Comparator.naturalOrder());
-                    int linesCut = completeLines.size();
-                    tetrominoes.parallelStream()
-                            .filter(p -> p.getPosition().getY() < completeLines.get(linesCut - 1))
-                            .forEach(p -> p.setPosition(p.getPosition().addY(linesCut)));
-                    tetrominoes.removeIf(p -> p.isRemovable() && (p.getPosition().getY() + p.getShape().length) > HEIGHT - 1);
-                }
-
-                next.get().setPosition(INITIAL_POSITION);
-                next.get().setMovable(true);
-                tetrominoes.add(next.get());
-
-                current.set(next.get());
-                sortNextPiece();
-
-                if (hasColission(current.get(), current.get().getPosition().addY(1))) {
-                    setTicking(false);
-                    if (listener != null) {
-                        listener.tick();
-                    }
-                    throw new RuntimeException("GAMEOVER!");
-                }
+                verifyCompletedLines();
+                addNextPiece();
+                checkGameOver();
             } else {
                 if (hasColission(current.get(), current.get().getPosition().addY(1))) {
                     current.get().setMovable(false);
@@ -143,11 +154,74 @@ public class JTetris extends TimerTask {
                     current.get().setPosition(current.get().getPosition().addY(1));
                 }
             }
-
-            if (listener != null) {
-                listener.tick();
-            }
+            notifyChanges();
         }
+    }
+
+    private void notifyChanges() {
+        if (listener != null) {
+            listener.tick();
+        }
+    }
+
+    private void checkGameOver() {
+        if (hasColission(current.get(), current.get().getPosition().addY(1))) {
+            setTicking(false);
+            notifyChanges();
+            throw new RuntimeException("GAMEOVER!");
+        }
+    }
+
+    private void addNextPiece() {
+        next.get().setPosition(INITIAL_POSITION);
+        next.get().setMovable(true);
+        tetrominoes.add(next.get());
+
+        current.set(next.get());
+        sortNextPiece();
+    }
+
+    private void verifyCompletedLines() {
+        List<Integer> completeLines = searchCompleteLines();
+        if (!completeLines.isEmpty()) {
+            int linesCut = completeLines.size();
+            List<Tetromino> pieces = getGameTetrominoes();
+
+            // cut pieces of complete lines
+            pieces.parallelStream()
+                    .forEach(p -> p.cut(completeLines));
+
+            // adjust pieces position
+            Predicate<Tetromino> piecesBeforeLastLineCut = p -> p.getPosition().getY() < completeLines.get(linesCut - 1);
+            pieces.parallelStream()
+                    .filter(piecesBeforeLastLineCut)
+                    .forEach(p -> p.setPosition(p.getPosition().addY(linesCut)));
+
+            // remove pieces completely cut
+            pieces.removeIf(p -> p.getHeight() == 0);
+
+            computeScore(linesCut);
+        }
+    }
+
+    private void computeScore(int linesCut) {
+        score += LINE_CLEAR_SCORE[linesCut];
+        updateLevel();
+    }
+
+    private void updateLevel() {
+        long newLevel = score / LEVEL_UP;
+        if (newLevel > currentLevel) {
+            currentLevel = newLevel;
+            updateTickFrequency(STARTING_TICK - (newLevel * 20));
+        }
+    }
+
+    private List<Tetromino> getGameTetrominoes() {
+        return tetrominoes
+                .parallelStream()
+                .filter(Tetromino::isRemovable)
+                .collect(Collectors.toList());
     }
 
     private List<Integer> searchCompleteLines() {
@@ -156,6 +230,7 @@ public class JTetris extends TimerTask {
                 .parallel()
                 .filter(l -> (l < HEIGHT - 1) && Stream.of(board[l])
                         .allMatch(Objects::nonNull))
+                .sorted()
                 .boxed()
                 .collect(Collectors.toList());
     }
@@ -179,7 +254,7 @@ public class JTetris extends TimerTask {
     }
 
     public void handleMovement(Movement movement) {
-        if (movement != null) {
+        if (movement != null && current.get() != null) {
             switch (movement) {
                 case LEFT: {
                     Position newPosition = current.get().getPosition().addX(-1);

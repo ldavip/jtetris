@@ -61,4 +61,12 @@
             </properties>
         </profile>
     </profiles>
+
+    <repositories>
+        <repository>
+            <id>conjars-repo</id>
+            <name>Conjars Repository</name>
+            <url>https://conjars.org/repo/</url>
+        </repository>
+    </repositories>
 </project>

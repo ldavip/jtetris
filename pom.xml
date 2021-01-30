@@ -47,15 +47,15 @@
     <profiles>
         <profile>
             <id>console</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
             <properties>
                 <start-class>br.com.ldavip.jtetris.ui.console.ConsoleUI</start-class>
             </properties>
         </profile>
         <profile>
             <id>gui</id>
-            <activation>
-                <activeByDefault>true</activeByDefault>
-            </activation>
             <properties>
                 <start-class>br.com.ldavip.jtetris.ui.fx.Main</start-class>
             </properties>

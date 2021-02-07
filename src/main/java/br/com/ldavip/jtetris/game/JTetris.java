@@ -12,6 +12,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class JTetris {
+    public static int LEVEL_INCREASE = 20;
     private static long seed = 0;
     private static long LEVEL_UP = 1000;
     private static long STARTING_TICK = 500;
@@ -34,10 +35,12 @@ public class JTetris {
             RedZ::new,
             YellowO::new
     );
-    private AtomicBoolean ticking = new AtomicBoolean(false);
+    private final AtomicBoolean ticking = new AtomicBoolean(false);
+    private final AtomicBoolean gameover = new AtomicBoolean(false);
+    private final AtomicBoolean cheated = new AtomicBoolean(false);
     private Timer timer;
 
-    private TickListener listener;
+    private GameOverListener listener;
 
     private AtomicReference<Tetromino> next = new AtomicReference<>();
     private AtomicReference<Tetromino> current = new AtomicReference<>();
@@ -47,6 +50,13 @@ public class JTetris {
     private long tick;
 
     public JTetris() {
+        start();
+    }
+
+    public void start() {
+        score = 0;
+        currentLevel = 0;
+        tetrominoes.clear();
         initBoard();
         startTicking(STARTING_TICK);
     }
@@ -93,7 +103,7 @@ public class JTetris {
         return score;
     }
 
-    public void setListener(TickListener listener) {
+    public void setListener(GameOverListener listener) {
         this.listener = listener;
     }
 
@@ -154,21 +164,12 @@ public class JTetris {
                     current.get().setPosition(current.get().getPosition().addY(1));
                 }
             }
-            notifyChanges();
-        }
-    }
-
-    private void notifyChanges() {
-        if (listener != null) {
-            listener.tick();
         }
     }
 
     private void checkGameOver() {
         if (hasColission(current.get(), current.get().getPosition().addY(1))) {
-            setTicking(false);
-            notifyChanges();
-            throw new RuntimeException("GAMEOVER!");
+            stop();
         }
     }
 
@@ -213,7 +214,7 @@ public class JTetris {
         long newLevel = score / LEVEL_UP;
         if (newLevel > currentLevel) {
             currentLevel = newLevel;
-            updateTickFrequency(STARTING_TICK - (newLevel * 20));
+            updateTickFrequency(STARTING_TICK - (newLevel * LEVEL_INCREASE));
         }
     }
 
@@ -254,6 +255,9 @@ public class JTetris {
     }
 
     public void handleMovement(Movement movement) {
+        if (isPaused()) {
+            return;
+        }
         if (movement != null && current.get() != null) {
             switch (movement) {
                 case LEFT: {
@@ -292,6 +296,23 @@ public class JTetris {
         paused.set(!paused.get());
     }
 
+    public boolean isPaused() {
+        return paused.get();
+    }
+
+    public boolean isGameover() {
+        return gameover.get();
+    }
+
+    public void stop() {
+        setTicking(false);
+        paused.set(false);
+        gameover.set(true);
+        if (listener != null) {
+            listener.gameover();
+        }
+    }
+
     private boolean hasColission(Tetromino piece, Position position) {
         boolean[][] matrix = getCollisionMatrix(tetrominoes
                 .parallelStream()
@@ -316,5 +337,16 @@ public class JTetris {
 
     public static void setSeed(long seed) {
         JTetris.seed = seed;
+    }
+
+    public boolean isPlaying() {
+        return ticking.get();
+    }
+
+    public void changeNextPiece() {
+        if (!cheated.get()) {
+            LEVEL_INCREASE *= 2.5;
+        }
+        sortNextPiece();
     }
 }

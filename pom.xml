@@ -51,7 +51,7 @@
                 <activeByDefault>true</activeByDefault>
             </activation>
             <properties>
-                <start-class>br.com.ldavip.jtetris.ui.console.ConsoleUI</start-class>
+                <start-class>br.com.ldavip.jtetris.ui.fx.console.Main</start-class>
             </properties>
         </profile>
         <profile>
